@@ -1,0 +1,72 @@
+#!/usr/bin/env perl
+
+# ABSTRACT: A simple HTTP server for static files with template support.
+
+use Modern::Perl 2018;
+use Mojolicious::Lite -signatures;
+
+use Path::Tiny;
+use Pod::Markdown;
+use Pod::Simple::Search;
+
+my $config_file = pop // die 'need config file';
+die "config file '$config_file' does not exist" unless -f $config_file;
+my $config = plugin Config => {file => path($config_file)->realpath};
+
+$config->{listen} //= 'http://127.0.0.1';
+my $basedir = path($config->{basedir})->realpath;
+die "base directory '$basedir' does not exist" unless -d $basedir;
+push @ARGV, 'daemon', '-m', 'production', '-l', $config->{listen} unless @ARGV;
+
+unshift app->renderer->paths->@*, $basedir->child('templates');
+unshift app->static->paths->@*, my $site = $basedir->child('public');
+
+get '/doc/:module' => sub ($c) {
+    my $search = Pod::Simple::Search->new;
+    my $parser = Pod::Markdown->new(
+        perldoc_url_prefix => '/doc/'
+    );
+
+    my $path = $search->find($c->stash('module'));
+    if (not $path) {
+        $c->reply->not_found;
+        return;
+    }
+
+    $parser->output_string(\my $markdown);
+    $parser->parse_file($path);
+
+    $c->stash(markdown => $markdown);
+    $c->render('markdown');
+};
+
+# Catch all
+get '/*anypath' => { anypath => '' } => sub ($c) {
+    my $path = $site->child(
+        $c->stash('anypath') || 'index'
+    );
+
+    # No upwards traversal
+    if (not $site->subsumes($path)) {
+        $c->reply->not_found;
+        return;
+    }
+
+    if (-f $path) {
+        $c->reply->static($path);
+        return;
+    }
+
+    $path = $path->child('index') if -d $path;
+    $path = $path->sibling($path->basename . ".md");
+    if (-f $path) {
+        #$c->stash(title => );
+        $c->stash(markdown => $path->slurp_utf8);
+        $c->render('markdown');
+        return;
+    }
+
+    $c->reply->not_found;
+};
+
+app->start;
