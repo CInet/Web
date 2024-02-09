@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# This post-receive hook checks out any new tag of the repository it is in
+# to $HOME/CInet/$project:$tag whenever a new commit is pushed. It also
+# symlinks $HOME/CInet/$project to the numerically largest tag (assuming
+# that they are all of the form 'vX.Y.Z').
+DESTDIR="$HOME/CInet/"
+PROJECT="$(basename $(pwd))"
+
+while read oldrev newrev ref
+do if [[ "$ref" =~ ^refs/tags/ ]]
+then TAG=$(basename $ref)
+echo "Checking out $TAG ($newrev) to $DESTDIR/$PROJECT:$TAG..."
+git --work-tree="$DESTDIR/$PROJECT:$TAG" --git-dir=. checkout -f $TAG
+fi
+LATEST_TAG=$(ls refs/tags/ | sort -V | tail -1)
+if [[ -n "$LATEST_TAG" ]]
+then echo "Linking $DESTDIR/$PROJECT to $LATEST_TAG."
+ln -sf "$PROJECT:$LATEST_TAG" "$DESTDIR/$PROJECT"
+fi

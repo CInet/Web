@@ -6,21 +6,124 @@ use Modern::Perl 2018;
 use Mojolicious::Lite -signatures;
 
 use Path::Tiny;
+use File::LibMagic;
 use Pod::Markdown;
 use Pod::Simple::Search;
 
+# Configuration and setup
 my $config_file = pop // die 'need config file';
 die "config file '$config_file' does not exist" unless -f $config_file;
 my $config = plugin Config => {file => path($config_file)->realpath};
 
 $config->{listen} //= 'http://127.0.0.1';
-my $basedir = path($config->{basedir})->realpath;
+my $basedir = path($config->{basedir} // die "no 'basedir' path configured")->realpath;
 die "base directory '$basedir' does not exist" unless -d $basedir;
 push @ARGV, 'daemon', '-m', 'production', '-l', $config->{listen} unless @ARGV;
 
 unshift app->renderer->paths->@*, $basedir->child('templates');
 unshift app->static->paths->@*, my $site = $basedir->child('public');
+my $images = path($config->{images} // die "no 'images' path configured");
+my $data = path($config->{data} // die "no 'data' path configured");
 
+sub directory_index {
+    my $dir = path(shift);
+    my @files = { name => '../', label => 'Parent directory', size => '', type => '', mtime => '' };
+    for my $file (sort $dir->children) {
+        push @files, {
+            name  => $file->basename,
+            label => $file->basename,
+            size  => $file->stat->size,
+            type  => (-d $file ? 'directory' : get_mimetype("$file")),
+            mtime => Mojo::Date->new($file->stat->mtime)->to_string,
+        };
+    }
+    @files
+}
+
+sub get_mimetype {
+    my $file = shift;
+    my $magic = File::LibMagic->new;
+    open my $fh, '<', $file;
+    my $info = $magic->info_from_handle($fh);
+    close $fh;
+    $info->{mime_type}
+}
+
+# Directory index of /images
+get '/images/*anypath' => { anypath => undef } => sub ($c) {
+    my $path = $images->child($c->stash('anypath') // '.');
+
+    # Always make sure that the browser has a trailing '/'
+    # so that relative links work.
+    if (-d $path and $c->req->url->path !~ m|/$|) {
+        $c->redirect_to($c->req->url->path->trailing_slash(1));
+        return;
+    }
+
+    # No upwards traversal
+    if (not $images->subsumes($path)) {
+        $c->reply->not_found;
+        return;
+    }
+
+    if (-f $path) {
+        $c->reply->file($path);
+        return;
+    }
+    elsif (-d $path) {
+        $c->stash(files => [ directory_index($path) ]);
+        $c->stash(reqpath => Mojo::Util::url_unescape($c->req->url->path));
+        $c->render('directory');
+        return;
+    }
+
+    $c->reply->not_found;
+};
+
+# Data repositories are all checked out by git post-receive hooks.
+# We treat them as static files. These URLs also understand a ?dir
+# GET parameter which will render a directory index instead of the
+# index.md file.
+get '/data/*anypath' => { anypath => undef } => sub ($c) {
+    my $path = $data->child($c->stash('anypath') // '.');
+
+    # Always make sure that the browser has a trailing '/'
+    # so that relative links work.
+    if (-d $path and $c->req->url->path !~ m|/$|) {
+        $c->redirect_to($c->req->url->path->trailing_slash(1));
+        return;
+    }
+
+    # No upwards traversal
+    if (not $data->subsumes($path)) {
+        $c->reply->not_found;
+        return;
+    }
+
+    if (-f $path) {
+        $c->reply->file($path);
+        return;
+    }
+
+    if ($c->param('dir') or (-d $path and not -f $path->child('index.md'))) {
+        $c->stash(files => [ directory_index($path) ]);
+        $c->stash(reqpath => Mojo::Util::url_unescape($c->req->url->path));
+        $c->render('directory');
+        return;
+    }
+
+    $path = $path->child('index') if -d $path;
+    $path = $path->sibling($path->basename . ".md");
+    if (-f $path) {
+        $c->stash(markdown => $path->slurp_utf8);
+        $c->render('markdown');
+        return;
+    }
+
+    $c->reply->not_found;
+};
+
+# Serve documentation of installed Perl modules
 get '/doc/:module' => sub ($c) {
     my $search = Pod::Simple::Search->new;
     my $parser = Pod::Markdown->new(
@@ -40,11 +143,18 @@ get '/doc/:module' => sub ($c) {
     $c->render('markdown');
 };
 
-# Catch all
+# Catch all: serve static files or render markdown files.
 get '/*anypath' => { anypath => '' } => sub ($c) {
     my $path = $site->child(
         $c->stash('anypath') || 'index'
     );
+
+    # Always make sure that the browser has a trailing '/'
+    # so that relative links work.
+    if (-d $path and $c->req->url->path !~ m|/$|) {
+        $c->redirect_to($c->req->url->path->trailing_slash(1));
+        return;
+    }
 
     # No upwards traversal
     if (not $site->subsumes($path)) {
