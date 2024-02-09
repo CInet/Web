@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # This post-receive hook checks out the master branch of the repository
 # it is in to $HOME/CInet/$project whenever a new commit is pushed.
 DESTDIR="$HOME/CInet/"
@@ -11,3 +13,4 @@ do if [[ "$ref" = "refs/heads/$BRANCH" ]]
 then echo "Deploying $BRANCH ($newrev) to $DESTDIR/$PROJECT..."
 git --work-tree="$DESTDIR/$PROJECT" --git-dir=. checkout -f $BRANCH
 fi
+done

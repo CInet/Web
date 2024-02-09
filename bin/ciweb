@@ -10,20 +10,15 @@ use File::LibMagic;
 use Pod::Markdown;
 use Pod::Simple::Search;
 
-# Configuration and setup
-my $config_file = pop // die 'need config file';
-die "config file '$config_file' does not exist" unless -f $config_file;
-my $config = plugin Config => {file => path($config_file)->realpath};
+# Configuration and setup: use MOJO_CONFIG environment variable to set path.
+my $config = plugin 'Config';
 
-$config->{listen} //= 'http://127.0.0.1';
-my $basedir = path($config->{basedir} // die "no 'basedir' path configured")->realpath;
-die "base directory '$basedir' does not exist" unless -d $basedir;
-push @ARGV, 'daemon', '-m', 'production', '-l', $config->{listen} unless @ARGV;
+my $basedir = path($config->{basedir} // die "no 'basedir' path configured");
+my $images  = path($config->{images}  // die "no 'images' path configured");
+my $data    = path($config->{data}    // die "no 'data' path configured");
 
 unshift app->renderer->paths->@*, $basedir->child('templates');
 unshift app->static->paths->@*, my $site = $basedir->child('public');
-my $images = path($config->{images} // die "no 'images' path configured");
-my $data = path($config->{data} // die "no 'data' path configured");
 
 sub directory_index {
     my $dir = path(shift);
