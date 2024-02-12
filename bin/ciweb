@@ -48,16 +48,17 @@ sub get_mimetype {
 get '/images/*anypath' => { anypath => undef } => sub ($c) {
     my $path = $images->child($c->stash('anypath') // '.');
 
-    # Always make sure that the browser has a trailing '/'
-    # so that relative links work.
-    if (-d $path and $c->req->url->path !~ m|/$|) {
-        $c->redirect_to($c->req->url->path->trailing_slash(1));
-        return;
-    }
-
     # No upwards traversal
     if (not $images->subsumes($path)) {
         $c->reply->not_found;
+        return;
+    }
+
+    # Always make sure that the browser has a trailing '/'
+    # so that relative links work.
+    if (-d $path and $c->req->url->path !~ m|/$|) {
+        $c->req->url->path->trailing_slash(1);
+        $c->redirect_to($c->req->url);
         return;
     }
 
@@ -82,16 +83,17 @@ get '/images/*anypath' => { anypath => undef } => sub ($c) {
 get '/data/*anypath' => { anypath => undef } => sub ($c) {
     my $path = $data->child($c->stash('anypath') // '.');
 
-    # Always make sure that the browser has a trailing '/'
-    # so that relative links work.
-    if (-d $path and $c->req->url->path !~ m|/$|) {
-        $c->redirect_to($c->req->url->path->trailing_slash(1));
-        return;
-    }
-
     # No upwards traversal
     if (not $data->subsumes($path)) {
         $c->reply->not_found;
+        return;
+    }
+
+    # Always make sure that the browser has a trailing '/'
+    # so that relative links work.
+    if (-d $path and $c->req->url->path !~ m|/$|) {
+        $c->req->url->path->trailing_slash(1);
+        $c->redirect_to($c->req->url);
         return;
     }
 
@@ -100,7 +102,7 @@ get '/data/*anypath' => { anypath => undef } => sub ($c) {
         return;
     }
 
-    if ($c->param('dir') or (-d $path and not -f $path->child('index.md'))) {
+    if (-d $path and (defined $c->param('dir') or not -f $path->child('index.md'))) {
         $c->stash(files => [ directory_index($path) ]);
         $c->stash(reqpath => Mojo::Util::url_unescape($c->req->url->path));
         $c->render('directory');
@@ -144,16 +146,17 @@ get '/*anypath' => { anypath => '' } => sub ($c) {
         $c->stash('anypath') || 'index'
     );
 
-    # Always make sure that the browser has a trailing '/'
-    # so that relative links work.
-    if (-d $path and $c->req->url->path !~ m|/$|) {
-        $c->redirect_to($c->req->url->path->trailing_slash(1));
-        return;
-    }
-
     # No upwards traversal
     if (not $site->subsumes($path)) {
         $c->reply->not_found;
+        return;
+    }
+
+    # Always make sure that the browser has a trailing '/'
+    # so that relative links work.
+    if (-d $path and $c->req->url->path !~ m|/$|) {
+        $c->req->url->path->trailing_slash(1);
+        $c->redirect_to($c->req->url);
         return;
     }
 
