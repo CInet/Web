@@ -71,7 +71,7 @@ sub handle_file {
     # If the file exists, serve it. If its mimetype is text/*,
     # then serve it as text.
     if (-f $path) {
-        if (get_mimetype($path)) {
+        if (get_mimetype($path) =~ m|^text/|) {
             $c->render(text => $path->slurp_utf8, format => 'txt');
         }
         else {
