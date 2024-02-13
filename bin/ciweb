@@ -44,29 +44,65 @@ sub get_mimetype {
     $info->{mime_type}
 }
 
-# Directory index of /images
-get '/images/*anypath' => { anypath => undef } => sub ($c) {
-    my $path = $images->child($c->stash('anypath') // '.');
-
+sub ensure_subsumes {
+    my ($c, $dir, $path) = @_;
     # No upwards traversal
-    if (not $images->subsumes($path)) {
+    if (not $dir->subsumes($path)) {
         $c->reply->not_found;
-        return;
+        return 0;
     }
+    return 1;
+}
 
+sub ensure_directory_slash {
+    my ($c, $path) = @_;
     # Always make sure that the browser has a trailing '/'
     # so that relative links work.
     if (-d $path and $c->req->url->path !~ m|/$|) {
         $c->req->url->path->trailing_slash(1);
         $c->redirect_to($c->req->url);
-        return;
+        return 0;
     }
+    return 1;
+}
 
+sub handle_file {
+    my ($c, $path) = @_;
+    # If the file exists, serve it. If its mimetype is text/*,
+    # then serve it as text.
     if (-f $path) {
-        $c->reply->file($path);
-        return;
+        if (get_mimetype($path)) {
+            $c->render(text => $path->slurp_utf8, format => 'txt');
+        }
+        else {
+            $c->reply->file($path);
+        }
+        return 1;
     }
-    elsif (-d $path) {
+    return 0;
+}
+
+sub handle_markdown {
+    my ($c, $path) = @_;
+    $path = $path->child('index') if -d $path;
+    $path = $path->sibling($path->basename . ".md");
+    if (-f $path) {
+        $c->stash(markdown => $path->slurp_utf8);
+        $c->render('markdown');
+        return 1;
+    }
+    return 0;
+}
+
+# Directory index of /images
+get '/images/*anypath' => { anypath => undef } => sub ($c) {
+    my $path = $images->child($c->stash('anypath') // '.');
+
+    ensure_subsumes($c, $images => $path) or return;
+    ensure_directory_slash($c, $path) or return;
+    handle_file($c, $path) and return;
+
+    if (-d $path) {
         $c->stash(files => [ directory_index($path) ]);
         $c->stash(reqpath => Mojo::Util::url_unescape($c->req->url->path));
         $c->render('directory');
@@ -83,24 +119,9 @@ get '/images/*anypath' => { anypath => undef } => sub ($c) {
 get '/data/*anypath' => { anypath => undef } => sub ($c) {
     my $path = $data->child($c->stash('anypath') // '.');
 
-    # No upwards traversal
-    if (not $data->subsumes($path)) {
-        $c->reply->not_found;
-        return;
-    }
-
-    # Always make sure that the browser has a trailing '/'
-    # so that relative links work.
-    if (-d $path and $c->req->url->path !~ m|/$|) {
-        $c->req->url->path->trailing_slash(1);
-        $c->redirect_to($c->req->url);
-        return;
-    }
-
-    if (-f $path) {
-        $c->reply->file($path);
-        return;
-    }
+    ensure_subsumes($c, $data => $path) or return;
+    ensure_directory_slash($c, $path) or return;
+    handle_file($c, $path) and return;
 
     if (-d $path and (defined $c->param('dir') or not -f $path->child('index.md'))) {
         $c->stash(files => [ directory_index($path) ]);
@@ -109,13 +130,7 @@ get '/data/*anypath' => { anypath => undef } => sub ($c) {
         return;
     }
 
-    $path = $path->child('index') if -d $path;
-    $path = $path->sibling($path->basename . ".md");
-    if (-f $path) {
-        $c->stash(markdown => $path->slurp_utf8);
-        $c->render('markdown');
-        return;
-    }
+    handle_markdown($c, $path) and return;
 
     $c->reply->not_found;
 };
@@ -146,33 +161,10 @@ get '/*anypath' => { anypath => '' } => sub ($c) {
         $c->stash('anypath') || 'index'
     );
 
-    # No upwards traversal
-    if (not $site->subsumes($path)) {
-        $c->reply->not_found;
-        return;
-    }
-
-    # Always make sure that the browser has a trailing '/'
-    # so that relative links work.
-    if (-d $path and $c->req->url->path !~ m|/$|) {
-        $c->req->url->path->trailing_slash(1);
-        $c->redirect_to($c->req->url);
-        return;
-    }
-
-    if (-f $path) {
-        $c->reply->static($path);
-        return;
-    }
-
-    $path = $path->child('index') if -d $path;
-    $path = $path->sibling($path->basename . ".md");
-    if (-f $path) {
-        #$c->stash(title => );
-        $c->stash(markdown => $path->slurp_utf8);
-        $c->render('markdown');
-        return;
-    }
+    ensure_subsumes($c, $site => $path) or return;
+    ensure_directory_slash($c, $path) or return;
+    handle_file($c, $path) and return;
+    handle_markdown($c, $path) and return;
 
     $c->reply->not_found;
 };
