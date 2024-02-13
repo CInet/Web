@@ -11,6 +11,7 @@ BRANCH="master"
 while read oldrev newrev ref
 do if [[ "$ref" = "refs/heads/$BRANCH" ]]
 then echo "Deploying $BRANCH ($newrev) to $DESTDIR/$PROJECT..."
+mkdir -p "$DESTDIR/$PROJECT"
 git --work-tree="$DESTDIR/$PROJECT" --git-dir=. checkout -f $BRANCH
 fi
 done
