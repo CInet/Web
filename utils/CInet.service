@@ -1,0 +1,15 @@
+[Unit]
+Description=CInet website
+After=network.target
+
+[Service]
+Type=simple
+RemainAfterExit=yes
+EnvironmentFile=/home/www/CInet.env
+ExecStart=hypnotoad /home/www/src/Web/bin/ciweb
+ExecReload=hypnotoad /home/www/src/Web/bin/ciweb
+ExecStop=hypnotoad -s /home/www/src/Web/bin/ciweb
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
