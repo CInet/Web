@@ -19,6 +19,6 @@ fi
 LATEST_TAG=$(ls refs/tags/ | sort -V | tail -1)
 if [[ -n "$LATEST_TAG" ]]
 then echo "Linking $DESTDIR/$PROJECT to $LATEST_TAG."
-ln -sf "$PROJECT:$LATEST_TAG" "$DESTDIR/$PROJECT"
+ln -Tsf "$PROJECT:$LATEST_TAG" "$DESTDIR/$PROJECT"
 fi
 done
