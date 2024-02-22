@@ -6,6 +6,7 @@ use Modern::Perl 2018;
 use Mojolicious::Lite -signatures;
 
 use Path::Tiny;
+use Sort::Naturally;
 use File::LibMagic;
 use Pod::Markdown;
 use Pod::Simple::Search;
@@ -23,7 +24,7 @@ unshift app->static->paths->@*, my $site = $basedir->child('public');
 sub directory_index {
     my $dir = path(shift);
     my @files = { name => '../', label => 'Parent directory', size => '', type => '', mtime => '' };
-    for my $file (sort $dir->children) {
+    for my $file (nsort $dir->children) {
         push @files, {
             name  => $file->basename,
             label => $file->basename,
